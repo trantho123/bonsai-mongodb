@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  api:
+    build:
+      context: .  
+    container_name: bonsai_api
+    ports:
+      - "8080:8080"  # Expose API port
+    environment:
+      - DB_SOURCE=mongodb://host.docker.internal:27017  
+    networks:
+      - bonsai_network
+
+networks:
+  bonsai_network:
+    driver: bridge
