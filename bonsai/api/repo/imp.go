@@ -3,14 +3,56 @@ package repo
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/trantho123/saleswebsite/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func (i *Imp) CreateUser(user models.CreateUser) error {
+func (i *Imp) UpdateUserVerification(userID string, verified bool) error {
+	_, err := i.imp.Collection("users").UpdateOne(context.TODO(), bson.M{"_id": userID}, bson.M{"$set": bson.M{"verified": verified}})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (i *Imp) GetUserByVerificationCode(code string) (models.User, error) {
+	var user models.User
+	err := i.imp.Collection("users").FindOne(context.TODO(), bson.M{"verificationcode": code}).Decode(&user)
+	if err != nil {
+		return user, err
+	}
+	return user, nil
+}
+
+func (i *Imp) UpdateUser(user models.User) error {
+	_, err := i.imp.Collection("users").UpdateOne(context.TODO(), bson.M{"email": user.Email}, bson.M{"$set": user})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (i *Imp) DeleteUser(email string) error {
+	_, err := i.imp.Collection("users").DeleteOne(context.TODO(), bson.M{"email": email})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (i *Imp) ResetPassword(email, newPassword string) error {
+	_, err := i.imp.Collection("users").UpdateOne(context.TODO(), bson.M{"email": email}, bson.M{"$set": bson.M{"password": newPassword}})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (i *Imp) CreateUser(user models.User) error {
 	_, err := i.imp.Collection("users").InsertOne(context.TODO(), user)
 	if err != nil {
 		return err
@@ -69,16 +111,11 @@ func (i *Imp) GetProduct(id string) (models.Product, error) {
 	return product, nil
 }
 
-func (i *Imp) GetListProducts(page, pageSize int) ([]models.Product, int64, error) {
+func (i *Imp) GetListProducts() ([]models.Product, error) {
 	var products []models.Product
-
-	skip := (page - 1) * pageSize
-
-	filter := bson.M{} // Thay đổi điều kiện nếu cần
-	cursor, err := i.imp.Collection("products").Find(context.TODO(), filter,
-		options.Find().SetSkip(int64(skip)).SetLimit(int64(pageSize)))
+	cursor, err := i.imp.Collection("products").Find(context.TODO(), bson.M{})
 	if err != nil {
-		return products, 0, err
+		return products, err
 	}
 	defer cursor.Close(context.Background())
 
@@ -86,17 +123,11 @@ func (i *Imp) GetListProducts(page, pageSize int) ([]models.Product, int64, erro
 		var product models.Product
 		err := cursor.Decode(&product)
 		if err != nil {
-			return products, 0, err
+			return products, err
 		}
 		products = append(products, product)
 	}
-
-	total, err := i.imp.Collection("products").CountDocuments(context.TODO(), filter)
-	if err != nil {
-		return products, 0, err
-	}
-
-	return products, total, nil
+	return products, nil
 }
 
 // func (i *Imp) GetProductByCategory(category string) ([]models.Product, error) {
@@ -133,34 +164,34 @@ func (i *Imp) GetCartByUserId(userID string) (models.Cart, error) {
 	return cart, nil
 }
 
-func (i *Imp) GetProductsInCart(userID string) ([]models.Item, error) {
+func (i *Imp) GetItemsInCart(userID string) ([]models.Item, error) {
 	cart, err := i.GetCartByUserId(userID)
 	if err != nil {
 		return nil, err
 	}
-	return cart.Product, nil
+	return cart.Items, nil
 }
 
-func (i *Imp) UpdateCart(cart models.Cart) error {
-	_, err := i.imp.Collection("carts").UpdateOne(context.TODO(), bson.M{"_id": cart.ID}, bson.M{"$set": cart})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (i *Imp) IsProductExitsInCart(userID, productID string) bool {
-	products, err := i.GetProductsInCart(userID)
+func (i *Imp) IsItemInCart(userID, productID string) bool {
+	items, err := i.GetItemsInCart(userID)
 	if err != nil {
 		return false
 	}
-	for _, item := range products {
+	for _, item := range items {
 		if item.ProductID.Hex() == productID {
 			return true
 		}
 	}
 	return false
+}
+
+func (i *Imp) UpdateCart(cart models.Cart) error {
+	_, err := i.imp.Collection("carts").UpdateOne(
+		context.TODO(),
+		bson.M{"_id": cart.ID},
+		bson.M{"$set": cart},
+	)
+	return err
 }
 
 func (i *Imp) GetRole(id string) (models.Role, error) {
@@ -239,4 +270,193 @@ func (i *Imp) IsEmailExist(email string) bool {
 		return false
 	}
 	return true
+}
+
+func (i *Imp) GetProductsByTags(tags []string) ([]models.Product, error) {
+	var products []models.Product
+
+	filter := bson.M{
+		"tags.name": bson.M{
+			"$in": tags,
+		},
+	}
+
+	cursor, err := i.imp.Collection("products").Find(context.TODO(), filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query products: %v", err)
+	}
+	defer cursor.Close(context.Background())
+
+	for cursor.Next(context.Background()) {
+		var product models.Product
+		if err := cursor.Decode(&product); err != nil {
+			return nil, fmt.Errorf("failed to decode product: %v", err)
+		}
+		products = append(products, product)
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("cursor error: %v", err)
+	}
+
+	return products, nil
+}
+
+func (i *Imp) CreateOrder(order models.Order) (string, error) {
+	order.ID = primitive.NewObjectID()
+	_, err := i.imp.Collection("orders").InsertOne(context.TODO(), order)
+	if err != nil {
+		return "", err
+	}
+	return order.ID.Hex(), nil
+}
+
+func (i *Imp) GetOrderByID(orderID string) (models.Order, error) {
+	var order models.Order
+	id, err := primitive.ObjectIDFromHex(orderID)
+	if err != nil {
+		return order, err
+	}
+	err = i.imp.Collection("orders").FindOne(context.TODO(), bson.M{"_id": id}).Decode(&order)
+	return order, err
+}
+
+func (i *Imp) GetOrdersByUserID(userID string) ([]models.Order, error) {
+	var orders []models.Order
+	id, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return orders, err
+	}
+	cursor, err := i.imp.Collection("orders").Find(context.TODO(), bson.M{"user_id": id})
+	if err != nil {
+		return orders, err
+	}
+	err = cursor.All(context.TODO(), &orders)
+	return orders, err
+}
+
+func (i *Imp) UpdateOrderStatus(orderID string, status string) error {
+	id, err := primitive.ObjectIDFromHex(orderID)
+	if err != nil {
+		return err
+	}
+	_, err = i.imp.Collection("orders").UpdateOne(
+		context.TODO(),
+		bson.M{"_id": id},
+		bson.M{"$set": bson.M{
+			"status":     status,
+			"updated_at": time.Now(),
+		}},
+	)
+	return err
+}
+
+func (i *Imp) UpdatePaymentStatus(orderID string, status string, transactionID string) error {
+	id, err := primitive.ObjectIDFromHex(orderID)
+	if err != nil {
+		return err
+	}
+	_, err = i.imp.Collection("orders").UpdateOne(
+		context.TODO(),
+		bson.M{"_id": id},
+		bson.M{"$set": bson.M{
+			"payment_details.status":         status,
+			"payment_details.transaction_id": transactionID,
+			"payment_details.paid_at":        time.Now(),
+			"updated_at":                     time.Now(),
+		}},
+	)
+	return err
+}
+
+func (i *Imp) CreateComment(comment models.Comment) error {
+	comment.ID = primitive.NewObjectID()
+	comment.CreatedAt = time.Now()
+	comment.UpdatedAt = time.Now()
+
+	_, err := i.imp.Collection("reviews").InsertOne(context.TODO(), comment)
+	return err
+}
+
+func (i *Imp) GetCommentsByProductID(productID string) ([]models.Comment, error) {
+	var comments []models.Comment
+
+	id, err := primitive.ObjectIDFromHex(productID)
+	if err != nil {
+		return nil, err
+	}
+
+	cursor, err := i.imp.Collection("reviews").Find(
+		context.TODO(),
+		bson.M{"product_id": id},
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(context.TODO())
+
+	err = cursor.All(context.TODO(), &comments)
+	return comments, err
+}
+
+func (i *Imp) UpdateComment(commentID string, content string, rating float32) error {
+	id, err := primitive.ObjectIDFromHex(commentID)
+	if err != nil {
+		return err
+	}
+
+	_, err = i.imp.Collection("reviews").UpdateOne(
+		context.TODO(),
+		bson.M{"_id": id},
+		bson.M{
+			"$set": bson.M{
+				"content":    content,
+				"rating":     rating,
+				"updated_at": time.Now(),
+			},
+		},
+	)
+	return err
+}
+
+func (i *Imp) DeleteComment(commentID string) error {
+	id, err := primitive.ObjectIDFromHex(commentID)
+	if err != nil {
+		return err
+	}
+
+	_, err = i.imp.Collection("reviews").DeleteOne(context.TODO(), bson.M{"_id": id})
+	return err
+}
+
+func (i *Imp) GetUserByID(id string) (models.User, error) {
+	var user models.User
+
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return user, err
+	}
+
+	err = i.imp.Collection("users").FindOne(
+		context.TODO(),
+		bson.M{"_id": objectID},
+	).Decode(&user)
+
+	return user, err
+}
+
+func (i *Imp) GetCommentByID(commentID string) (models.Comment, error) {
+	var comment models.Comment
+
+	id, err := primitive.ObjectIDFromHex(commentID)
+	if err != nil {
+		return comment, err
+	}
+
+	err = i.imp.Collection("reviews").FindOne(
+		context.TODO(),
+		bson.M{"_id": id},
+	).Decode(&comment)
+
+	return comment, err
 }

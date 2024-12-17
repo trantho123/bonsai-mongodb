@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .container { padding: 20px; }
+        .header { color: #1976d2; }
+        .order-details { margin: 20px 0; }
+        .items-table { width: 100%; border-collapse: collapse; }
+        .items-table th, .items-table td { padding: 10px; border: 1px solid #ddd; }
+        .total { font-weight: bold; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 class="header">Order Confirmation</h2>
+        <p>Dear {{.CustomerName}},</p>
+        <p>Thank you for your order. Here are your order details:</p>
+
+        <div class="order-details">
+            <p><strong>Order ID:</strong> {{.OrderID}}</p>
+            <p><strong>Shipping Address:</strong> {{.ShippingAddress}}</p>
+        </div>
+
+        <table class="items-table">
+            <tr>
+                <th>Item</th>
+                <th>Quantity</th>
+                <th>Price</th>
+                <th>Total</th>
+            </tr>
+            {{range .Items}}
+            <tr>
+                <td>{{.Name}}</td>
+                <td>{{.Quantity}}</td>
+                <td>VND {{.Price}}</td>
+                <td>VND {{.Total}}</td>
+            </tr>
+            {{end}}
+        </table>
+
+        <p class="total">Total Amount: VND {{.TotalAmount}}</p>
+
+        <p>Order will be delivered within 3-4 business days.</p>
+        <p>We will process your order soon.</p>
+        <p>Thank you for your purchase!</p>
+        <p>Best regards,<br>Shop It Team</p>
+    </div>
+</body>
+</html> 

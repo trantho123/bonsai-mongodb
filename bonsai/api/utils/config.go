@@ -8,6 +8,10 @@ type Config struct {
 	HTTPServerPort string `mapstructure:"HTTP_SERVER_ADDRESS"`
 	DBName         string `mapstructure:"DB_NAME"`
 	AccessTokenKey string `mapstructure:"ACCESS_TOKEN_KEY"`
+	SMTPHost       string `mapstructure:"SMTP_HOST"`
+	SMTPPort       string `mapstructure:"SMTP_PORT"`
+	EmailFrom      string `mapstructure:"EMAIL_FROM"`
+	EmailPassword  string `mapstructure:"EMAIL_PASSWORD"`
 }
 
 func LoadConfig(path string) (config Config, err error) {

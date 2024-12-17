@@ -46,3 +46,23 @@ func ValidateToken(tokenString string, secretkey string) (*Claims, error) {
 		return nil, err
 	}
 }
+
+func CreateResetToken(email string, secretkey string) (string, error) {
+	var mySigningKey = []byte(secretkey)
+
+	claims := Claims{
+		Email: email,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: time.Now().Add(time.Minute * 15).Unix(), // Token expires after 15 minutes
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	tokenString, err := token.SignedString(mySigningKey)
+	if err != nil {
+		return "", err
+	}
+
+	return tokenString, nil
+}

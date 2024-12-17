@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/trantho123/saleswebsite/models"
 )
 
 type productIdReq struct {
@@ -11,12 +12,14 @@ type productIdReq struct {
 }
 
 type productResp struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Price       int32    `json:"price"`
-	Quantity    int32    `json:"quantity"`
-	Image       []string `json:"image"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Price       int32             `json:"price"`
+	Quantity    int32             `json:"quantity"`
+	Image       string            `json:"image"`
+	Rating      float32           `json:"rating"`
+	Tags        []models.ListTags `json:"tags"`
 }
 
 func (s *Server) GetProduct(ctx *gin.Context) {
@@ -37,40 +40,20 @@ func (s *Server) GetProduct(ctx *gin.Context) {
 		Price:       product.Price,
 		Quantity:    product.Quantity,
 		Image:       product.Image,
+		Rating:      product.Rating,
+		Tags:        product.Tags,
 	}
 	ctx.JSON(http.StatusOK, productResp)
 }
 
-type productListReq struct {
-	Page     int `uri:"page" `
-	PageSize int `uri:"page_size" binding:"max=10"`
-}
-
-type productListResp struct {
-	PageId   int           `json:"page_id"`
-	PageSize int           `json:"page_size"`
-	Total    int64         `json:"total"`
-	Products []productResp `json:"products"`
-}
-
 func (s *Server) GetListProducts(ctx *gin.Context) {
-	var req productListReq
-	if err := ctx.ShouldBindUri(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, errorResponse(err))
-		return
-	}
-	if req.Page <= 0 {
-		req.Page = 1
-	}
-	if req.PageSize <= 0 {
-		req.PageSize = 10
-	}
-	products, total, err := s.repo.GetListProducts(req.Page, req.PageSize)
+	products, err := s.repo.GetListProducts()
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
-	listproduct := []productResp{}
+
+	var productResps []productResp
 	for _, product := range products {
 		productResp := productResp{
 			ID:          product.ID.Hex(),
@@ -79,13 +62,47 @@ func (s *Server) GetListProducts(ctx *gin.Context) {
 			Price:       product.Price,
 			Quantity:    product.Quantity,
 			Image:       product.Image,
+			Rating:      product.Rating,
+			Tags:        product.Tags,
 		}
-		listproduct = append(listproduct, productResp) // Thêm phần tử vào slice
+		productResps = append(productResps, productResp)
 	}
-	ctx.JSON(http.StatusOK, productListResp{
-		PageId:   req.Page,
-		PageSize: req.PageSize,
-		Total:    total,
-		Products: listproduct,
-	})
+
+	ctx.JSON(http.StatusOK, productResps)
+}
+
+type productTagsRequest struct {
+	Tags []string `json:"tags" binding:"required"`
+}
+
+func (s *Server) GetProductByTags(ctx *gin.Context) {
+	var req productTagsRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	// Lấy sản phẩm theo nhiều tags
+	products, err := s.repo.GetProductsByTags(req.Tags)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	var productResps []productResp
+	for _, product := range products {
+		productResp := productResp{
+			ID:          product.ID.Hex(),
+			Name:        product.Name,
+			Description: product.Description,
+			Price:       product.Price,
+			Quantity:    product.Quantity,
+			Image:       product.Image,
+			Rating:      product.Rating,
+			Tags:        product.Tags,
+		}
+		productResps = append(productResps, productResp)
+	}
+
+	ctx.JSON(http.StatusOK, productResps)
 }

@@ -34,7 +34,6 @@ func ConnectDB(uri string) *mongo.Client {
 
 	err = client.Ping(context.TODO(), nil)
 	if err != nil {
-		log.Fatal(uri)
 		log.Fatal("Không thể kết nối với MongoDB:", err)
 	}
 	fmt.Println("Kết nối MongoDB thành công!")

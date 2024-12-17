@@ -8,15 +8,15 @@ import (
 	"github.com/trantho123/saleswebsite/models"
 )
 
-type cartReq struct {
-	ProductID string `uri:"id" binding:"required"`
-	Quantity  int32  `uri:"quantity" binding:"required"`
+type cartRequest struct {
+	ProductID string `json:"productId" binding:"required"`
+	Quantity  int32  `json:"quantity" binding:"required"`
 }
 
 func (s *Server) CreateCart(c *gin.Context) {
-	var cartReq cartReq
-	if err := c.ShouldBindUri(&cartReq); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	var req cartRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
 	email, role, token, exits := authenUser(c)
@@ -28,11 +28,7 @@ func (s *Server) CreateCart(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Token not found"})
 		return
 	}
-	tk, err := s.repo.GetAccessToken(token)
-	if err != nil || tk.AccessToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "please login"})
-		return
-	}
+
 	if !s.repo.IsUserRole(role) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User not have permission"})
 		return
@@ -42,23 +38,31 @@ func (s *Server) CreateCart(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User not found"})
 		return
 	}
-	product, err := s.repo.GetProduct(cartReq.ProductID)
+	product, err := s.repo.GetProduct(req.ProductID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Product not found"})
+		return
+	}
+	if product.Quantity < req.Quantity {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Not enough product quantity"})
 		return
 	}
 	if !s.repo.IsCartExist(user.ID.Hex()) {
 		item := models.Item{
 			ProductID: product.ID,
+			Name:      product.Name,
 			Price:     product.Price,
-			Quantity:  cartReq.Quantity,
+			Quantity:  req.Quantity,
+			Image:     product.Image,
 			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		}
 		newCart := models.Cart{
 			User:      user.ID,
-			Product:   []models.Item{item},
-			Totals:    cartReq.Quantity * product.Price,
+			Items:     []models.Item{item},
+			Totals:    req.Quantity * product.Price,
 			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		}
 		if err := s.repo.CreateCart(newCart); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -70,24 +74,27 @@ func (s *Server) CreateCart(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		if s.repo.IsProductExitsInCart(user.ID.Hex(), product.ID.Hex()) {
-			for i, item := range cart.Product {
+		if s.repo.IsItemInCart(user.ID.Hex(), product.ID.Hex()) {
+			for i, item := range cart.Items {
 				if item.ProductID.Hex() == product.ID.Hex() {
-					cart.Product[i].Quantity += cartReq.Quantity
-					cart.Product[i].UpdatedAt = time.Now()
-					cart.Totals += cartReq.Quantity * product.Price
+					cart.Items[i].Quantity = req.Quantity
+					cart.Items[i].UpdatedAt = time.Now()
+					cart.Totals = calculateTotal(cart.Items)
 					break
 				}
 			}
 		} else {
 			item := models.Item{
 				ProductID: product.ID,
+				Name:      product.Name,
 				Price:     product.Price,
-				Quantity:  cartReq.Quantity,
+				Quantity:  req.Quantity,
+				Image:     product.Image,
 				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
 			}
-			cart.Product = append(cart.Product, item)
-			cart.Totals += cartReq.Quantity * product.Price
+			cart.Items = append(cart.Items, item)
+			cart.Totals = calculateTotal(cart.Items)
 		}
 		cart.UpdatedAt = time.Now()
 		if err := s.repo.UpdateCart(cart); err != nil {
@@ -95,11 +102,19 @@ func (s *Server) CreateCart(c *gin.Context) {
 			return
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Cart created successfully"})
+	c.JSON(http.StatusOK, gin.H{"message": "Cart updated successfully"})
+}
+
+func calculateTotal(items []models.Item) int32 {
+	var total int32
+	for _, item := range items {
+		total += item.Price * item.Quantity
+	}
+	return total
 }
 
 func (s *Server) GetCart(c *gin.Context) {
-	email, role, token, exits := authenUser(c)
+	email, role, _, exits := authenUser(c)
 	if !exits {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User not login"})
 		return
@@ -108,15 +123,7 @@ func (s *Server) GetCart(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User not have permission"})
 		return
 	}
-	if token == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Token not found"})
-		return
-	}
-	tk, err := s.repo.GetAccessToken(token)
-	if err != nil || tk.AccessToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "please login"})
-		return
-	}
+
 	user, err := s.repo.GetUserByEmail(email)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User not found"})
@@ -141,10 +148,12 @@ type deleteProductInCartReq struct {
 func (s *Server) DeleteProductInCart(c *gin.Context) {
 	var deleteReq deleteProductInCartReq
 	if err := c.ShouldBindJSON(&deleteReq); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
-	email, role, token, exits := authenUser(c)
+
+	// Authentication checks
+	email, role, _, exits := authenUser(c)
 	if !exits {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User not login"})
 		return
@@ -153,56 +162,60 @@ func (s *Server) DeleteProductInCart(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User not have permission"})
 		return
 	}
-	if token == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Token not found"})
-		return
-	}
-	tk, err := s.repo.GetAccessToken(token)
-	if err != nil || tk.AccessToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "please login"})
-		return
-	}
+
+	// Get user
 	user, err := s.repo.GetUserByEmail(email)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User not found"})
 		return
 	}
-	if !s.repo.IsProductExitsInCart(user.ID.Hex(), deleteReq.ProductID) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Product not exits in cart"})
+
+	// Check if item exists in cart
+	if !s.repo.IsItemInCart(user.ID.Hex(), deleteReq.ProductID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Product not found in cart"})
 		return
 	}
+
+	// Get cart
 	cart, err := s.repo.GetCartByUserId(user.ID.Hex())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	for i, item := range cart.Product {
+
+	// Remove item from cart
+	for i, item := range cart.Items {
 		if item.ProductID.Hex() == deleteReq.ProductID {
 			cart.Totals -= item.Price * item.Quantity
-			cart.Product = append(cart.Product[:i], cart.Product[i+1:]...)
+			cart.Items = append(cart.Items[:i], cart.Items[i+1:]...)
 			break
 		}
 	}
+
+	// Update cart
 	cart.UpdatedAt = time.Now()
 	if err := s.repo.UpdateCart(cart); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Product deleted successfully"})
+
+	c.JSON(http.StatusOK, gin.H{"message": "Product removed from cart"})
 }
 
 type updateQuantityProductInCartReq struct {
-	ProductID string `json:"id" binding:"required"`
-	Quantity  int32  `json:"quantity" binding:"required" min:"1"`
+	ProductID string `json:"productId" binding:"required"`
+	Quantity  int32  `json:"newQuantity" binding:"required" min:"1"`
 }
 
 func (s *Server) UpdateQuantityProductCart(c *gin.Context) {
 	var updateReq updateQuantityProductInCartReq
 	if err := c.ShouldBindJSON(&updateReq); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
-	email, role, token, exits := authenUser(c)
+
+	// Authentication checks
+	email, role, _, exits := authenUser(c)
 	if !exits {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User not login"})
 		return
@@ -211,58 +224,62 @@ func (s *Server) UpdateQuantityProductCart(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User not have permission"})
 		return
 	}
-	if token == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Token not found"})
-		return
-	}
-	tk, err := s.repo.GetAccessToken(token)
-	if err != nil || tk.AccessToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "please login"})
-		return
-	}
+
+	// Get user
 	user, err := s.repo.GetUserByEmail(email)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "User not found"})
 		return
 	}
-	if !s.repo.IsProductExitsInCart(user.ID.Hex(), updateReq.ProductID) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Product not exits in cart"})
+
+	// Check if item exists in cart
+	if !s.repo.IsItemInCart(user.ID.Hex(), updateReq.ProductID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Product not found in cart"})
 		return
 	}
 
+	// Check product quantity
 	product, err := s.repo.GetProduct(updateReq.ProductID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Product not found"})
 		return
 	}
 	if product.Quantity < updateReq.Quantity {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Product not enough quantity"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Not enough product quantity"})
 		return
 	}
 
+	// Get cart
 	cart, err := s.repo.GetCartByUserId(user.ID.Hex())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	for i, item := range cart.Product {
+	// Update item quantity
+	for i, item := range cart.Items {
 		if item.ProductID.Hex() == updateReq.ProductID {
 			cart.Totals -= item.Price * item.Quantity
-			cart.Product[i].Quantity = updateReq.Quantity
+			cart.Items[i].Quantity = updateReq.Quantity
+			cart.Items[i].UpdatedAt = time.Now()
 			cart.Totals += item.Price * updateReq.Quantity
 			break
 		}
 	}
+
+	// Update cart
 	cart.UpdatedAt = time.Now()
 	if err := s.repo.UpdateCart(cart); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Get updated cart
 	cartAfterUpdate, err := s.repo.GetCartByUserId(user.ID.Hex())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
 	c.JSON(http.StatusOK, cartAfterUpdate)
 }
