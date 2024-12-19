@@ -21,32 +21,29 @@ const AddUser = ({ getUser }) => {
     };
     const handleSubmit = async (e) => {
         e.preventDefault()
+        let authToken = localStorage.getItem('Authorization')
         let phoneRegex = /^(?:(?:\+|0{0,2})91(\s*[\-]\s*)?|[0]?)?[789]\d{9}$/gm;
         let emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
         try {
             if (!credentials.email && !credentials.firstName && !credentials.password && !credentials.phoneNumber && !credentials.lastName) {
                 toast.error("Please Fill the all Fields", { autoClose: 500, theme: 'colored' })
             }
-            else if (credentials.firstName.length <= 3 || credentials.lastName.length <= 3) {
-                toast.error("Please enter name with more than 3 characters", { autoClose: 500, theme: 'colored' })
-            }
-            else if (!emailRegex.test(credentials.email)) {
-                toast.error("Please enter valid email", { autoClose: 500, theme: 'colored' })
-            }
-            else if (!phoneRegex.test(credentials.phoneNumber)) {
-                toast.error("Please enter a valid phone number", { autoClose: 500, theme: 'colored' })
-            }
+ 
             else if (credentials.password.length < 5) {
                 toast.error("Please enter password with more than 5 characters", { autoClose: 500, theme: 'colored' })
             }
             else if (credentials.email && credentials.firstName && credentials.lastName && credentials.phoneNumber && credentials.password) {
-                const sendAuth = await axios.post(`${process.env.REACT_APP_REGISTER}`,
+                const sendAuth = await axios.post(`${process.env.REACT_APP_REGISTER_ADMIN}`,
                     {
                         firstName: credentials.firstName,
                         lastName: credentials.lastName,
                         email: credentials.email,
-                        phoneNumber: credentials.phoneNumber,
+                        phone: credentials.phoneNumber,
                         password: credentials.password,
+                    }, {
+                        headers: {
+                            'Authorization': `Bearer ${authToken}`,
+                        },
                     })
                 const receive = await sendAuth.data
                 setOpen(false);

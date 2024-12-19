@@ -6,6 +6,7 @@ import (
 )
 
 type Repo interface {
+	GetAllUsers() ([]models.User, error)
 	CreateUser(user models.User) error
 	GetUserByEmail(email string) (models.User, error)
 	GetUserByUsername(username string) (models.User, error)
@@ -13,6 +14,7 @@ type Repo interface {
 	GetProduct(id string) (models.Product, error)
 	GetListProducts() ([]models.Product, error)
 	GetAllRoles() ([]models.Role, error)
+	GetRole(roleid string) (models.Role, error)
 	IsEmailExist(email string) bool
 	UpdateUser(user models.User) error
 	IsUserExist(id string) bool
@@ -41,6 +43,7 @@ type Repo interface {
 	UpdateComment(commentID string, content string, rating float32) error
 	DeleteComment(commentID string) error
 	GetCommentByID(commentID string) (models.Comment, error)
+	GetAllOrders() ([]models.Order, error)
 }
 
 type Imp struct {

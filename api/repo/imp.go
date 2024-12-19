@@ -217,6 +217,25 @@ func (i *Imp) IsUserRole(id string) bool {
 	}
 	return true
 }
+func (i *Imp) GetAllOrders() ([]models.Order, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	collection := i.imp.Collection("orders")
+
+	cursor, err := collection.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var orders []models.Order
+	if err = cursor.All(ctx, &orders); err != nil {
+		return nil, err
+	}
+
+	return orders, nil
+}
 
 func (i *Imp) IsAdminRole(id string) bool {
 	role, err := i.GetRole(id)
@@ -226,7 +245,7 @@ func (i *Imp) IsAdminRole(id string) bool {
 	if role.ID.Hex() == "" || role.Name != "Admin" {
 		return false
 	}
-	return role.Name == "admin"
+	return role.Name == "Admin"
 }
 func (i *Imp) IsCartExist(userID string) bool {
 	cart, err := i.GetCartByUserId(userID)
@@ -459,4 +478,24 @@ func (i *Imp) GetCommentByID(commentID string) (models.Comment, error) {
 	).Decode(&comment)
 
 	return comment, err
+}
+
+func (i *Imp) GetAllUsers() ([]models.User, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	collection := i.imp.Collection("users")
+
+	cursor, err := collection.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var users []models.User
+	if err = cursor.All(ctx, &users); err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }

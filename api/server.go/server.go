@@ -38,6 +38,7 @@ func (server *Server) Router() {
 	server.router.POST("/products/tags", server.GetProductByTags)
 	server.router.GET("/verify/:code", server.VerifyEmail)
 	server.router.GET("/products/:id/comments", server.GetProductComments)
+	server.router.GET("/admin/chartdata", server.GetChartData)
 
 	authRoutes := server.router.Group("/auth").Use(authMiddleware(server.config.AccessTokenKey))
 	authRoutes.GET("/profile", server.GetProfile)
@@ -54,6 +55,8 @@ func (server *Server) Router() {
 	authRoutes.POST("/comments", server.CreateComment)
 	authRoutes.PUT("/comments", server.UpdateComment)
 	authRoutes.DELETE("/comments/:id", server.DeleteComment)
+	authRoutes.GET("/admin/users", server.GetAllUsers)
+	authRoutes.POST("/add/admin", server.CreateUserAdmin)
 
 }
 

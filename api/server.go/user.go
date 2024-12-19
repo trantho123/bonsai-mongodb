@@ -99,12 +99,14 @@ func (s *Server) Login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Email/Password is incorrect"})
 		return
 	}
-	rolesUserId := s.AddRoles("User")
-	if rolesUserId == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Role not found"})
+	rolesId := userData.Role.Hex()
+	roleName, err := s.repo.GetRole(rolesId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Role not found"})
 		return
 	}
-	accesstoken, err := jwt.CreateToken(userData.Email, rolesUserId, s.config.AccessTokenKey)
+
+	accesstoken, err := jwt.CreateToken(userData.Email, rolesId, s.config.AccessTokenKey)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -113,6 +115,7 @@ func (s *Server) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message":   "Login successfully",
 		"success":   true,
+		"role":      roleName.Name,
 		"authToken": accesstoken,
 	})
 }

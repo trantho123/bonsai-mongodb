@@ -54,7 +54,12 @@ const Login = () => {
           if (receive.success === true) {
             toast.success("Login Successfully", { autoClose: 500, theme: 'colored' })
             localStorage.setItem('Authorization', receive.authToken)
-            navigate('/')
+            localStorage.setItem('Role', receive.role)
+            if (receive.role === 'Admin') {
+              navigate('/admin/home')
+          } else {
+              navigate('/')
+          }
           }
         } catch (error) {
           // Hiển thị error message từ backend
